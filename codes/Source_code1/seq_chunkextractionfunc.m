@@ -1,4 +1,14 @@
 function[chunks2,percY,seqforchunks,chunks2replace,labelidx,newseq,divprobtoplot2,patterncell2,labels2,numnewsyls]=seq_chunkextractionfunc(seqnew,~)
+% SEQ_CHUNKEXTRACTIONFUNC - find recurring "chunks" in sequences of
+% syllable labels
+%   [~,~,chunkseq,chunks2replace,labelidx,~,~,patterncell,labels]
+%   = seq_chunkextractionfunc(SEQNEW,0) finds chunks in SEQNEW 
+%   
+%   SEQNEW - single string that concatenates all sequences of syllable
+%   labels, where each sequence is prefixed by 'Y' and suffixed with 'D',
+%   and introductory notes and repeats have already been collapsed into 
+%   single-string labels
+%
 % This function tried to automate extraction of chunks based on chi sq
 % analysis. First, we try to determine if a syllable's next transition
 % depends on the syllable that comes before it using chi sq analysis. If it
@@ -20,26 +30,28 @@ function[chunks2,percY,seqforchunks,chunks2replace,labelidx,newseq,divprobtoplot
 % and patterncell2 gives you the patterncell for the diagraph
 % labels2 = what are the replaced labels
 % numnewsyls = number of additional states
-%%
-unq=unique(seqnew);
+%% compute probabilities of all syls to everything
+unq=unique(seqnew);  % n = length(unq), number of syllables
 % for all syllables
-% probabilities of all syls to everything
 for i=1:length(unq)
     for j=1:length(unq)
+        % transmat is 1 x n cell, where each entry i \in n is all possible
+        % transitions from syllable i to all other syllables j
         transmat{i}{j}=[unq(i),unq(j)];
+        % countst is 1 x n cell where each entry i \in n is counts for each
+        % transition in `transmat`
         countst{i}(j)=length(strfind(seqnew,[unq(i),unq(j)])); % counting WITH overlab
     end
-    probst{i}=countst{i}/sum(countst{i});
+    probst{i}=countst{i}/sum(countst{i}); % probst is 1 x n cell
 end
-%%
-% prob of all syls to everything given each syl before
+%% compute prob of all syls to everything given each syl before
 % make matrix of all by all
 for xi=1:length(unq)
     for xj=1:length(unq)
-        mat{xi,xj}=[unq(xi),unq(xj)];
+        mat{xi,xj}=[unq(xi),unq(xj)];  % mat is n x n cell of bigrams
     end
 end
-%%
+%% set up for chisq test
 for yi=1:length(unq)
     for yj=1:length(unq)
         for yk=1:length(unq)

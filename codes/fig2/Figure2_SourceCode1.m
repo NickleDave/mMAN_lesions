@@ -3,11 +3,11 @@
 % importing textfiles and reading them:
 % replaced repeats files:
 %% bird1
-fileID = fopen('D:\analysis\data_for_elife_mMAN\Source_data_1\bird1_prelesion_REPR','r');
-b1_pre_R = fscanf(fileID, '%s')
+fileID = fopen('./data/Source_data_1/bird1_prelesion_REPR','r');
+b1_pre_R = fscanf(fileID, '%s');
 fclose(fileID);
-fileID = fopen('D:\analysis\data_for_elife_mMAN\Source_data_1\bird1_postlesion_REPR','r');
-b1_post_R = fscanf(fileID, '%s')
+fileID = fopen('./data/Source_data_1/bird1_postlesion_REPR','r');
+b1_post_R = fscanf(fileID, '%s');
 fclose(fileID);
 %% bird2
 

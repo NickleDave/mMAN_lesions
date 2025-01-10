@@ -1,8 +1,10 @@
 function [h,chi2,p]=chisq_2dist(dist1,dist2,alpha)
-%chisq gof
-%source= https://www.youtube.com/watch?v=Cert35F-w4c
-%dist1=observed values
-%dist2=expectedvalues
+% CHISQ_2DIST - Chi-Square goodness of fit test
+%   [H, CHI2, P]=chisq_2dist(DIST1,DIST2,ALPHA) runs test with alpha
+%   DIST1 - observed values
+%   DIST2 - expectedvalues
+% source: https://www.youtube.com/watch?v=Cert35F-w4c
+% see also, https://itl.nist.gov/div898/handbook/eda/section3/eda35f.htm
 num=find(dist1==0);
 dist1(num)=[]; %removing zeros based on obs values
 dist2(num)=[]; %removing zeros based on obs values

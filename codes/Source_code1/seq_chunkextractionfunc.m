@@ -1,3 +1,9 @@
+%% for testing
+fileID = fopen('./data/Source_data_1/bird1_prelesion_REPR','r');
+seqnew = fscanf(fileID, '%s');
+fclose(fileID);
+
+%% actual function
 function[chunks2,percY,seqforchunks,chunks2replace,labelidx,newseq,divprobtoplot2,patterncell2,labels2,numnewsyls]=seq_chunkextractionfunc(seqnew,~)
 % SEQ_CHUNKEXTRACTIONFUNC - find recurring "chunks" in sequences of
 % syllable labels
@@ -30,85 +36,136 @@ function[chunks2,percY,seqforchunks,chunks2replace,labelidx,newseq,divprobtoplot
 % and patterncell2 gives you the patterncell for the diagraph
 % labels2 = what are the replaced labels
 % numnewsyls = number of additional states
-%% compute probabilities of all syls to everything
+%% compute probabilities of all syls to everything %%%
 unq=unique(seqnew);  % n = length(unq), number of syllables
 % for all syllables
 for i=1:length(unq)
     for j=1:length(unq)
         % transmat is 1 x n cell, where each entry i \in n is all possible
         % transitions from syllable i to all other syllables j
-        transmat{i}{j}=[unq(i),unq(j)];
+        transmat{i}{j}=[unq(i), unq(j)];
         % countst is 1 x n cell where each entry i \in n is counts for each
         % transition in `transmat`
-        countst{i}(j)=length(strfind(seqnew,[unq(i),unq(j)])); % counting WITH overlab
+        countst{i}(j)=length(strfind(seqnew, [unq(i),unq(j)])); % counting WITH overlab
     end
-    probst{i}=countst{i}/sum(countst{i}); % probst is 1 x n cell
+    % next three lines are commented out because we never use `probst`
+    % % `probst` is cell array that gives us the probability of transitioning
+    % % for each syllable. Elementwise divide each cell of counts by its sum
+    % probst{i} = countst{i} / sum(countst{i}); % probst is 1 x n cell
 end
-%% compute prob of all syls to everything given each syl before
-% make matrix of all by all
+
+%% compute prob of all syls to everything, given each syl before %%%
+%% make matrix with "bigram" state labels (preceding syllable yi + syllable yj), e.g. 'fg'
 for xi=1:length(unq)
     for xj=1:length(unq)
         mat{xi,xj}=[unq(xi),unq(xj)];  % mat is n x n cell of bigrams
     end
 end
-%% set up for chisq test
+%% get counts for all possible "bigrams" (preceding syllable `yi`, syllable `yj`), followed by (following syl `yk`)
 for yi=1:length(unq)
     for yj=1:length(unq)
         for yk=1:length(unq)
-            test{yi,yj}{yk}=[mat{yi,yj},unq(yk)]; %every column is x-yoursyl-y
-            countstg{yi,yj}(yk)=length(strfind(seqnew,[mat{yi,yj},unq(yk)]));
+            % `test` tracks labels for every (bigram (yi, yj), following syl yk) pair we are going to run a
+            % chi-square test on, to compare with (yj, following syl yk).
+            % It's the labels for `countstg`, just like `trasnmat` is the
+            % labels for `countst`
+            test{yi,yj}{yk} = [mat{yi,yj}, unq(yk)]; %every column is x-yoursyl-y
+            % countstg is 1 x n cell with counts of transitions from bigram
+            % (yi, yj) to following syllable label yk
+            countstg{yi,yj}(yk) = length(strfind(seqnew,[mat{yi,yj}, unq(yk)]));
         end
     end
 end
-%% chisq test
-h = nan(length(unq));
-chi = nan(length(unq));
-p = nan(length(unq));
-countst2=countst; %saving countst before I modify it to delete linear branches
+
+%% clean transition matrices before doing chisq test %%%
+
+%% remove small branches in `countst`
 % remove increadibly small branches which are likely mislabels
+
+% next line makes a copy of countst before modifying to delete linear branches
+% countst2 = countst;
+% I commented out since we never use this again and it only exists for
+% debugging purposes.
+% aside: wow matlab's default is copy on assigment?
+% https://www.mathworks.com/help/matlab/matlab_prog/copying-objects.html
+% I'm so used to Python "variables as sticky notes" I forgot
+% https://swcarpentry.github.io/python-novice-inflammation/01-intro.html#using-variables-in-python
+
+% first we set any counts whose probability < 1% to zero
 for ix=1:length(countst)
-    num=countst{ix}./sum(countst{ix});
-    pink=countst{ix};
-    pink(num<0.01)=0;
-    countst{ix}=pink;
+    num = countst{ix} ./ sum(countst{ix});
+    pink = countst{ix};
+    % #FIXME: magic number
+    pink(num < 0.01) = 0;
+    countst{ix} = pink;
 end
-nzeros=cellfun(@(x) length(nonzeros(x))>1,countst, 'UniformOutput',0);
-nz2=cellfun(@(x) x==1,nzeros);
-countst(~nz2)={0};
-% remove all comparisons of column 1
+
+% after setting these very rare counts to zero, we look for any syllable
+% **without branches**, i.e, that only transitions to one other syllable,
+% and we set its cell to 0, so that we don't bother analyzing it below
+
+% next line -- use an anonymous function that returns true if
+% nonzeros(cell) \gt 1; `nzeros` is just a boolean vector
+nzeros=cellfun(@(x) length(nonzeros(x)) > 1, countst, 'UniformOutput', 0);
+nz2=cellfun(@(x) x==1, nzeros);  % convert `nzeros` (cell) to logical array
+countst(~nz2)={0};  % now set all the cells that don't branch to 0
+
+%% set cell of `countst` corresponding sequence start character to 0 (if it's not already)
+
+% FIXME: magic letter -- set this as a default
 colY=strfind(unq,'Y'); % this is the column of countst which corresponds to Y
 countst{colY}=0; %because Y doesnt actually depend on anything
+
+%% remove small branches from countstg
 % filtering out branches of countstg which are below 0.1% of the total
 % transitions
-testcountstg=countstg; % 'saving' countstg
-%testcountstg is the one that stays intact; countstg will be modified;
-%go through all cells and delete whole cells if sum within the cell is less
-%than 1% of the total times this syllable is observed
+% next line: copy of `countstg` that we grab values from below
+% do we need this? why not just use `countstg` if we don't modify?
+testcountstg=countstg;
+% go through all cells and delete whole cells if sum within the cell is less
+% than 1% of the total times this syllable is observed
 sumcols=sum(cellfun(@(x) sum(x),testcountstg),1);
-for i=1:size(countstg,1)
-    for j=1:size(countstg,2)
-        if sum(testcountstg{i,j})/sumcols(j)>0.01 %filtering out cells of countstg which appear very rarely %10%
-            newtestcnt{i,j}=testcountstg{i,j};
-        else newtestcnt{i,j}=[];
+% only keep cells of `countstg` where cell count / sum(column counts) is
+% greather than 1% -- a bit confusing to me that we "keep" here 
+% instead of drop as we just did for `countst`
+for i = 1:size(countstg, 1)
+    for j = 1:size(countstg, 2)
+        % #FIXME: magic number
+        if sum(testcountstg{i,j}) / sumcols(j) > 0.01
+            newtestcnt{i,j} = testcountstg{i,j};
+        else 
+            newtestcnt{i,j} = [];
         end
     end
 end
 countstg=newtestcnt;
 
+%% chisq test
+h = nan(length(unq));
+chi = nan(length(unq));
+p = nan(length(unq));
+
 % carrying out chi sq test:
-for zi=1:length(unq)
-    existingpostsyls = find(countst{zi}./sum(countst{zi})>0.01); %vector which gives indices of not-rare transitions; >0.01
-    for zj=1:length(unq)
-            %numstates should be number of possibilities of
-            %preceeding syl
-            numstates=sum(cellfun(@(x) ~isempty(x),countstg(:,zj)));
-        if ~isempty(countstg{zj,zi})
-            if any(countstg{zj,zi}(existingpostsyls)./sum(countst{zi}(existingpostsyls))>0.01)
-                if length(nonzeros(countstg{zj,zi}(existingpostsyls)))>1 %because you need at least a vector of 2 for chi sq test
-                    %if this conditional branch is not 1% f the total branches of
-                    %that syllable 
-                    testnew{zj,zi}=test{zj,zi}(existingpostsyls);
-                    [h(zj,zi),chi(zj,zi),p(zj,zi)] = chisq_2dist(countst{zi}(existingpostsyls),countstg{zj,zi}(existingpostsyls),0.01/numstates);
+for zi=1:length(unq)  % `zi` indexes 
+    % #FIXME: magic number
+    existingpostsyls = find(countst{zi} ./ sum(countst{zi}) > 0.01); % vector which gives indices of not-rare (unconditional) transitions;  > 1%
+    for zj=1:length(unq)  % here `zj` indexes "preceding syllable"
+        % numstates is number of states that involve zj
+        % we need this to do Bonferroni correction when we call `chisq_2dist`
+        % couldn't this next line go after the `if ~isempty`? since we only
+        % need states if we're going to analyze
+        numstates = sum(cellfun(@(x) ~isempty(x), countstg(:,zj)));
+        if ~isempty(countstg{zj,zi})  % if there is a count vector here instead of a 0, analyze it
+            % if any of the conditional branches are greater than 1% of the total branches of that syllable 
+            % #FIXME: magic number
+            if any(countstg{zj,zi}(existingpostsyls) ./ sum(countst{zi}(existingpostsyls)) > 0.01)
+                if length(nonzeros(countstg{zj,zi}(existingpostsyls))) > 1 % because you need at least a vector of 2 for chi sq test
+                    % next line: `testnew` keeps track of not-rare unconditional ((zj, zi)(existingpostsyls))
+                    % we never use this again so I'm commenting it out
+                    % testnew{zj,zi}=test{zj,zi}(existingpostsyls);
+                    % next line uses chisq_2dist function from `Source_code1`
+                    % #FIXME: magic number
+                    [h(zj,zi), chi(zj,zi), p(zj,zi)] = chisq_2dist(countst{zi}(existingpostsyls), countstg{zj,zi}(existingpostsyls), 0.01 / numstates);
                     %changed on 08.03.23, bonferroni correction
                     %if zi =1, first element of countst ie YY,Ya,Yb etc filtered to nonzero
                     %transitions vs all rows of countstg over first column (ie
@@ -121,22 +178,27 @@ for zi=1:length(unq)
     end
 end
 
-%% keep only the ones with h=1
+%% record which bigram states were significantly different (h=1) from total syllable state according to chisq test 
+% keep only the ones with h=1
 [a,b]=find(h==1);
 cellremaining=cell(length(unq));
 for i=1:length(a)
     cellremaining{a(i),b(i)}=mat{a(i),b(i)};
 end
-%% now do the relabelling thing
-% find letters not present in unq
+
+%% relabel states that were determined to be significantly different %%%
+%% find letters not present in unq
+
+% #FIXME: make this a helper function + an arg to the main function that
+% calls this helper function when the arg is None (default)
 allletters=[char(97:122),char(65:90),'0123456789']; %in case some extra chars are needed, i added char 60:64
 avletters1=allletters(~ismember(allletters,unq)); %available letters
 avletters=avletters1(end:-1:1); %just to make them more noticable when replaced
 
 %% collecting indices for replacing and replacing together
-states=cellfun(@(x) ~isempty(x),cellremaining);
+states=cellfun(@(x) ~isempty(x), cellremaining);
 sumstates=sum(states,1);
-torelabel=cellremaining(:,sumstates>=1);
+torelabel=cellremaining(:,sumstates >= 1);
 
 tt=1; %idc for avletters
 for ti=1:size(torelabel,2)
@@ -245,6 +307,7 @@ end
 % this is the seqnew I'd want for my chunks consistency analysis
 seqforchunks=seqnew;
 %%
+% #FIXME: magic number
 [a,freq]=uniquestring(seqnew,0.9); % was 0.9 HERE changed from 0.05 to 1 for bubu but bk2bk10 needs <1
 labels=cell(1,length(a));
 %unq=unique(seqnew);

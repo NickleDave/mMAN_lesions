@@ -2,6 +2,9 @@
 % DATASET OF BIRDS MADE OF SAME SIZE
 % importing textfiles and reading them:
 % replaced repeats files:
+
+
+
 %% bird1
 fileID = fopen('./data/Source_data_1/bird1_prelesion_REPR','r');
 b1_pre_R = fscanf(fileID, '%s');

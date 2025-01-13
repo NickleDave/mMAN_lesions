@@ -1,9 +1,3 @@
-%% for testing
-fileID = fopen('./data/Source_data_1/bird1_prelesion_REPR','r');
-seqnew = fscanf(fileID, '%s');
-fclose(fileID);
-
-%% actual function
 function[chunks2,percY,seqforchunks,chunks2replace,labelidx,newseq,divprobtoplot2,patterncell2,labels2,numnewsyls]=seq_chunkextractionfunc(seqnew,~)
 % SEQ_CHUNKEXTRACTIONFUNC - find recurring "chunks" in sequences of
 % syllable labels
@@ -56,6 +50,7 @@ end
 
 %% compute prob of all syls to everything, given each syl before %%%
 %% make matrix with "bigram" state labels (preceding syllable yi + syllable yj), e.g. 'fg'
+% we *just* make this to build `test` +  `countstg` in next code cell
 for xi=1:length(unq)
     for xj=1:length(unq)
         mat{xi,xj}=[unq(xi),unq(xj)];  % mat is n x n cell of bigrams
@@ -70,7 +65,7 @@ for yi=1:length(unq)
             % It's the labels for `countstg`, just like `trasnmat` is the
             % labels for `countst`
             test{yi,yj}{yk} = [mat{yi,yj}, unq(yk)]; %every column is x-yoursyl-y
-            % countstg is 1 x n cell with counts of transitions from bigram
+            % countstg is n x n cell with counts of transitions from bigram
             % (yi, yj) to following syllable label yk
             countstg{yi,yj}(yk) = length(strfind(seqnew,[mat{yi,yj}, unq(yk)]));
         end
@@ -110,11 +105,12 @@ nzeros=cellfun(@(x) length(nonzeros(x)) > 1, countst, 'UniformOutput', 0);
 nz2=cellfun(@(x) x==1, nzeros);  % convert `nzeros` (cell) to logical array
 countst(~nz2)={0};  % now set all the cells that don't branch to 0
 
-%% set cell of `countst` corresponding sequence start character to 0 (if it's not already)
+%% set cell of `countst` corresponding to 'Y' to 0 (if it's not already)
 
 % FIXME: magic letter -- set this as a default
 colY=strfind(unq,'Y'); % this is the column of countst which corresponds to Y
 countst{colY}=0; %because Y doesnt actually depend on anything
+% FIXME: 'Y' is start of sequences?
 
 %% remove small branches from countstg
 % filtering out branches of countstg which are below 0.1% of the total
@@ -146,17 +142,30 @@ chi = nan(length(unq));
 p = nan(length(unq));
 
 % carrying out chi sq test:
-for zi=1:length(unq)  % `zi` indexes 
+for zi=1:length(unq)  % zi indexes "syllable of interest", e.g. "D" in "Dp" and "Dw"
+    sprintf("zi=%i, unq(zi)=%s\n", zi, unq(zi))
     % #FIXME: magic number
     existingpostsyls = find(countst{zi} ./ sum(countst{zi}) > 0.01); % vector which gives indices of not-rare (unconditional) transitions;  > 1%
-    for zj=1:length(unq)  % here `zj` indexes "preceding syllable"
+    existingpostsyls
+    string(transmat{zi}(existingpostsyls))
+    for zj=1:length(unq)  % `zj` indexes "conditional context syllable", e.g. "c" in "cDp", "cDw"
+        sprintf("zj=%i, unq(zj)=%s", zj, unq(zj))
         % numstates is number of states that involve zj
         % we need this to do Bonferroni correction when we call `chisq_2dist`
         % couldn't this next line go after the `if ~isempty`? since we only
         % need states if we're going to analyze
-        numstates = sum(cellfun(@(x) ~isempty(x), countstg(:,zj)));
+        numstates = sum(cellfun(@(x) ~isempty(x), countstg(:,zj)));  % why index the columns with zj here?
+        numstates
+        these_states = cellfun(@(x) ~isempty(x), countstg(:,zj));
+        test{these_states, zj};
+        disp("~isempty(countstg{zj,zi})")
+        ~isempty(countstg{zj,zi})
         if ~isempty(countstg{zj,zi})  % if there is a count vector here instead of a 0, analyze it
             % if any of the conditional branches are greater than 1% of the total branches of that syllable 
+            % keeping example/variable names above:
+            % an example test{zj,zi} would be: {'cDD'}    {'cDY'}    {'cDa'}    {'cDc'}    {'cDi'}    {'cDl'}    {'cDp'}    {'cDr'}    {'cDw'}    {'cDx'}    {'cDy'}
+            % an example transmat{zi} would be: {'DD'}    {'DY'}    {'Da'}    {'Dc'}    {'Di'}    {'Dl'}    {'Dp'}    {'Dr'}    {'Dw'}    {'Dx'}    {'Dy'}
+            % thus `countstg{zj, zi}` gives us the counts for {context syllable zj, syllable of interest zi} 
             % #FIXME: magic number
             if any(countstg{zj,zi}(existingpostsyls) ./ sum(countst{zi}(existingpostsyls)) > 0.01)
                 if length(nonzeros(countstg{zj,zi}(existingpostsyls))) > 1 % because you need at least a vector of 2 for chi sq test
@@ -249,7 +258,7 @@ for ip=1:size(remcountstg,2)
             % test these against each other
             % what if there are more than 2 options? unlikely, but still..
             pairwise_combinations=nchoosek(index,2); %here you get combinations of indices
-            numstates2=length(pairwise_combinations)/2; %modified on 31.03.2023
+            numstates2=length(pairwise_combinations) / 2; %modified on 31.03.2023
             for id=1:size(pairwise_combinations,1) %along rows
                 data1=remcountstg{pairwise_combinations(id,1),ip};
                 data2=remcountstg{pairwise_combinations(id,2),ip};
